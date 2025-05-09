@@ -3,24 +3,21 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from datetime import datetime
 import time
-5
-# 1 chọn trang Website tin tức https://nhandan.vn/ 
-# 2 Click chọn một mục tin tức với danh mục văn hóa
-# 3 Bấm tìm kiếm(nếu trang web tin tức không có Button tìm kiếm thì có thể bỏ qua).
 
+def laytintuc(max_articles=50, max_pages=10):
+    # Bước 1: Chọn trang tin tức: https://nhandan.vn/
+    # Bước 2: Click chọn mục tin tức với danh mục văn hóa: https://nhandan.vn/vanhoa/
+    # Bước 3: Không có nút tìm kiếm nên bỏ qua
 
-def laytintuc(max_articles=50):
     base_url = "https://nhandan.vn/vanhoa/"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.3'
     }
 
-    all_links = set() 
-    page = 1
-    has_next_page = True
-# 5. Lấy tất cả dữ liệu của các trang.
-    # Lặp qua các trang (nếu có)
-    while len(all_links) < max_articles and has_next_page:
+    all_links = set()
+
+    # Bước 5: Lấy dữ liệu từ nhiều trang, lặp từ 1 đến max_pages
+    for page in range(1, max_pages + 1):
         url = f"{base_url}?page={page}" if page > 1 else base_url
         response = requests.get(url, headers=headers)
 
@@ -31,17 +28,15 @@ def laytintuc(max_articles=50):
         print(f"Đang lấy dữ liệu từ trang {page}...")
         soup = BeautifulSoup(response.content, "html.parser")
 
-        # Tìm danh sách bài viết
         danh_sach_tin = soup.find_all('h3', class_='story__heading')
         if not danh_sach_tin:
             print("Không tìm thấy bài viết nào ở trang này!")
             break
 
-        # Lấy các link bài viết
         links = []
         for tin in danh_sach_tin:
             a_tag = tin.find('a', href=True)
-            if a_tag and 'href' in a_tag.attrs:
+            if a_tag:
                 link = a_tag['href']
                 if not link.startswith('http'):
                     link = "https://nhandan.vn" + link if link.startswith('/') else link
@@ -54,25 +49,16 @@ def laytintuc(max_articles=50):
         all_links.update(links)
         print(f"Trang {page}: Tìm được {len(links)} link bài viết. Tổng cộng: {len(all_links)}")
 
-        # Kiểm tra phân trang
-        next_page = soup.find('a', class_='pagination-next')  # Tìm thẻ "Trang tiếp theo"
-        if next_page and 'href' in next_page.attrs:
-            page += 1
-        else:
-            print("Không có phân trang, chỉ có 1 trang.")
-            has_next_page = False
-
         if len(all_links) >= max_articles:
-            all_links = set(list(all_links)[:max_articles])
             break
 
-        time.sleep(1)  # Chờ 1 giây giữa các trang để tránh bị chặn
+        time.sleep(1)
 
-    print(f"Tổng cộng tìm được {len(all_links)} link bài viết: {all_links}")
-    
-    
-# 4. Lấy tất cả dữ liệu(Tiêu đề, Mô tả, Hình ảnh, Nội dung bài viết) hiển thị ở bài viết
-    # Trích xuất dữ liệu từ từng bài viết
+    # Giới hạn số lượng bài viết
+    all_links = list(all_links)[:max_articles]
+    print(f"Tổng cộng lấy {len(all_links)} bài viết.")
+
+    # Bước 4: Lấy tiêu đề, mô tả, hình ảnh, nội dung bài viết
     data = []
     for link in all_links:
         try:
@@ -80,19 +66,15 @@ def laytintuc(max_articles=50):
             response.raise_for_status()
             page_soup = BeautifulSoup(response.content, "html.parser")
 
-            # Lấy tiêu đề
             title_tag = page_soup.find("h1", class_="article__title cms-title")
             title = title_tag.text.strip() if title_tag else ""
 
-            # Lấy tóm tắt
             summary_tag = page_soup.find("div", class_="article__sapo cms-desc")
             summary = summary_tag.text.strip() if summary_tag else ""
 
-            # Lấy nội dung
             body = page_soup.find("div", class_="article__body cms-body")
             content = body.get_text(separator="\n").strip() if body else ""
 
-            # Lấy URL hình ảnh
             img_url = ""
             if body:
                 first_img = body.find('img', class_='cms-photo')
@@ -102,21 +84,21 @@ def laytintuc(max_articles=50):
             data.append([title, summary, content, img_url])
             print(f"Đã lấy bài: {title} - Ảnh: {img_url}")
 
-            time.sleep(1)  # Chờ 1 giây giữa các bài
+            time.sleep(1)
 
         except Exception as e:
             print(f"Lỗi khi lấy bài {link}: {str(e)}")
             continue
 
-# 6. Lưu dữ liệu đã lấy được vào file excel 
+    # Bước 6: Lưu dữ liệu vào Excel
     if data:
         df = pd.DataFrame(data, columns=["Tiêu đề", "Tóm tắt", "Nội dung", "Hình ảnh"])
         time_now = datetime.now().strftime("%Y%m%d_%H%M%S")
         file_name = f"tin_tuc_{time_now}.xlsx"
         df.to_excel(file_name, index=False)
-        print(f"Đã lưu vào file {file_name} lúc {datetime.now().strftime('%H:%M %d/%m/%Y')}")
+        print(f"Đã lưu vào file {file_name}")
     else:
-        print("Không có dữ liệu để lưu")
+        print("Không có dữ liệu để lưu.")
 
 if __name__ == "__main__":
     print("Bắt đầu chạy scraper...")
